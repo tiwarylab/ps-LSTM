@@ -49,18 +49,17 @@ def Rm_peaks_steps(traj):
             idx0=idx
     return traj
 
-def nn_vec(idx_s):
-    """
-    Compute nearest-neighbor vector.
-    """
-    nn_vec=torch.zeros(num_bins)
-    if idx_s-1 >= 0:
-        nn_vec[idx_s-1] = 1
-    if idx_s+1 <= num_bins-1:
-        nn_vec[idx_s+1] = 1
-        
-    return nn_vec
 
+class FixedSampler(torch.utils.data.sampler.Sampler):
+    def __init__(self, data):
+        self.num_samples = len(data)
+        self.idx_arr=np.random.permutation(self.num_samples)
+
+    def __iter__(self):
+        return iter(self.idx_arr)
+
+    def __len__(self):
+        return self.num_samples
 
 class seq_data(Dataset):
     
@@ -141,6 +140,14 @@ idx2char = np.array(vocab)
 text_as_int = np.array([char2idx[c] for c in text])
 
 
+# Generate NN vector
+in_vec = text_as_int
+vp = in_vec+1
+vm = in_vec-1
+nn_vec = np.zeros((in_vec.size, in_vec.max()+1), dtype='float32')
+nn_vec[ np.where(vp<=num_bins-1), vp[np.where(vp<=num_bins-1)] ] = 1.
+nn_vec[ np.where(vm>=0), vm[np.where(vm>=0)] ] = 1
+
 
 # The maximum length sentence we want for a single input in characters
 # Penalty factor
@@ -156,7 +163,11 @@ shift=1
 batch_size=64
 
 dataset = seq_data(text_as_int, 100, 1)
-dataset = DataLoader(dataset, batch_size=64, shuffle=True, drop_last=True)
+sampler=FixedSampler(dataset)
+dataset = DataLoader(dataset, batch_size=64, shuffle=False, sampler=sampler, drop_last=True)
+
+dataset_nn = seq_data(nn_vec, sequence_len, shift)
+dataset_nn = DataLoader(dataset_nn, batch_size=batch_size, shuffle=False, sampler=sampler, drop_last=True)
 
 vocab_size = len(vocab)
 embedding_dim = 8
@@ -169,24 +180,20 @@ print(model)
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-output_t = torch.zeros((64, 100, num_bins)).to(device)
 for epoch in range(EPOCHS):
     
     mu=min(sigma*mu, mu_max)
-    for batch_X_train, batch_Y_train in dataset:
+    for (batch_X_train, batch_Y_train), (nn_X_train, _) in zip(dataset, dataset_nn):
         
         batch_X_train = batch_X_train.to(device)
+        nn_X_train = nn_X_train.to(device)
         batch_Y_train = batch_Y_train.to(device)
         y_pred = model(batch_X_train)
         y=batch_Y_train.to(device)
         
-        for i in range(output_t.shape[0]):
-            for j in range(output_t.shape[1]):
-                output_t[i,j,:]=nn_vec(batch_X_train[i,j])
-        
         p=torch.nn.functional.softmax(y_pred, dim=-1)
         
-        loss = loss_fn(y_pred.view(-1, vocab_size), y.view(-1)) + 0.5*mu*(torch.sum(p*output_t)-1)**2
+        loss = loss_fn(y_pred.view(-1, vocab_size), y.view(-1)) + 0.5*mu*(torch.sum(p*nn_X_train)-1)**2
     
         optimizer.zero_grad()
         loss.backward()
