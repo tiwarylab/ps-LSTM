@@ -1,2 +1,2 @@
-# constrain-LSTM
+# ps-LSTM
 Training neural network with constraints
