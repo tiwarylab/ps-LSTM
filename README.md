@@ -1,4 +1,6 @@
 # ps-LSTM
 
 
-<img src="https://user-images.githubusercontent.com/22850008/156222664-6f67c60e-dfe0-4258-9861-132f44ae8113.png" width="700">
+<img src="https://user-images.githubusercontent.com/22850008/156241561-efc6a45c-5bba-4705-9c8f-fcac756f7658.jpeg" width="700">
+
+
